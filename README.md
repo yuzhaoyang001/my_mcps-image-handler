@@ -4,7 +4,7 @@
 
 DeepSeek 不能直接识别图片,但本服务通过 [Cursor TypeScript SDK](https://cursor.com/docs/sdk/typescript) 在本机跑一个 Cursor agent(默认 `composer-2`,可换 Claude/GPT 视觉模型),把图片理解成文本描述返回。DeepSeek 调用工具拿到文字结果,就等于"能看图"了。
 
-同时它也是**通用 agent 工具**:指令 + 可选图片,可执行任意任务。
+本服务**只做图片识别**:agent 始终以纯文本模式运行,不执行任何 shell/文件工具。
 
 ## 前置条件
 
@@ -27,15 +27,15 @@ npm run build && node dist/index.js
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `CURSOR_API_KEY` | — | Cursor API key,缺省时回退登录态 |
-| `CURSOR_MODEL` | `composer-2` | 视觉/agent 模型 id |
-| `CURSOR_AGENT_TIMEOUT_MS` | `600000` | 单次 agent 调用超时(毫秒) |
+| `CURSOR_MODEL` | `composer-2` | 视觉模型 id |
+| `CURSOR_AGENT_TIMEOUT_MS` | `600000` | 单次识别调用超时(毫秒) |
 
 ## 接入客户端
 
 ### Claude Code
 
 ```bash
-claude mcp add cursor-agent -- npx tsx D:/path/to/images-handler/src/index.ts
+claude mcp add image-recognition -e CURSOR_API_KEY="${CURSOR_API_KEY}" -- npx tsx D:/path/to/images-handler/src/index.ts
 ```
 
 ### Cursor
@@ -45,9 +45,12 @@ claude mcp add cursor-agent -- npx tsx D:/path/to/images-handler/src/index.ts
 ```json
 {
   "mcpServers": {
-    "cursor-agent": {
+    "image-recognition": {
       "command": "npx",
-      "args": ["tsx", "D:/path/to/images-handler/src/index.ts"]
+      "args": ["tsx", "D:/path/to/images-handler/src/index.ts"],
+      "env": {
+        "CURSOR_API_KEY": "${CURSOR_API_KEY}"
+      }
     }
   }
 }
@@ -55,39 +58,34 @@ claude mcp add cursor-agent -- npx tsx D:/path/to/images-handler/src/index.ts
 
 ### 其他标准 MCP 客户端
 
-stdio 传输,按标准协议配置启动命令即可。
+stdio 传输,按标准协议配置启动命令即可(记得通过 `env` 传入 `CURSOR_API_KEY`)。
 
-## 工具:`cursor_agent`
+## 工具:`recognize_image`
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `instruction` | string | 是 | 要 agent 做什么。看图时例如"详细描述这张图片的内容" |
-| `images` | string 或 string[] | 否 | 图片 data URI(`data:image/png;base64,...`)或 http(s) URL |
-| `model` | string | 否 | 覆盖默认模型 |
-| `tools` | boolean | 否 | `true` 时 agent 可执行 shell/文件工具(通用 agent 模式)。默认 `false` —— agent 只纯文本应答、不执行任何工具(看图安全模式) |
-| `cwd` | string | 否 | agent 的**初始**工作目录(仅在启用 tools 时有意义),默认服务所在目录 |
+| `images` | string 或 string[] | 是 | 图片 data URI(`data:image/png;base64,...`)或 http(s) URL |
+| `instruction` | string | 否 | 想针对图片问什么,缺省为"请详细描述这张图片的内容、画面元素和任何可见文字。" |
+| `model` | string | 否 | 覆盖视觉模型(默认 `composer-2`) |
 
 ## 示例
 
-给 DeepSeek 看图(默认就是安全模式,`tools` 可省略):
-
 ```json
 {
-  "instruction": "详细描述这张图片的内容",
   "images": ["data:image/png;base64,iVBORw0KGgo..."]
 }
 ```
 
-当通用 agent 用:
+带自定义指令:
 
 ```json
 {
-  "instruction": "读取当前目录的 package.json 并总结依赖",
-  "cwd": "D:/work/project/my-mcps"
+  "images": ["data:image/png;base64,iVBORw0KGgo..."],
+  "instruction": "识别图中的文字并翻译成中文"
 }
 ```
 
 ## 说明与限制
 
 - 每次工具调用都会新建一个独立 Cursor agent(调用间不共享会话历史),用完即关闭。
-- **安全边界**:`cwd` 只是 agent 的初始工作目录,**不是沙箱**。当 `tools: true` 时,agent 拥有以服务进程用户身份执行任意 shell 命令、读写任意路径文件的能力;且 agent 会自行抓取传入的图片 URL。默认 `tools: false`(纯文本应答)避免把不可信图片内容暴露给高权限 agent。**只在信任调用方时才开 `tools: true`。**
+- 服务**只做图片识别**:agent 恒为纯文本模式(`tools: []`),不执行 shell/文件工具,除传入的图片外不会读取或访问任何本地内容。

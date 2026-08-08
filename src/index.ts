@@ -10,34 +10,31 @@ const CURSOR_API_KEY = process.env.CURSOR_API_KEY;
 const DEFAULT_MODEL = process.env.CURSOR_MODEL ?? "composer-2";
 const rawTimeout = Number(process.env.CURSOR_AGENT_TIMEOUT_MS ?? 600_000);
 const TIMEOUT_MS = Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : 600_000;
+const DEFAULT_INSTRUCTION = "请详细描述这张图片的内容、画面元素和任何可见文字。";
 
 interface RunArgs {
   instruction: string;
-  images?: string[];
+  images: string[];
   model?: string;
-  tools?: boolean;
-  cwd?: string;
 }
 
 async function runCursorAgent(args: RunArgs): Promise<string> {
-  const images = (args.images ?? []).map(toSdkImage);
+  const images = args.images.map(toSdkImage);
 
   // A fresh agent per call so tool invocations never share conversation history.
+  // tools: [] → text-only; this server only recognizes images and never grants
+  // the model shell/file access.
   const agent = await Agent.create({
-    name: "mcp-cursor-agent",
+    name: "image-recognition",
     apiKey: CURSOR_API_KEY,
     model: { id: args.model ?? DEFAULT_MODEL },
-    // Default tools: [] → the agent only replies with text (no shell/file tools).
-    // Pass tools: true to enable the full agent toolset.
-    tools: args.tools === true ? undefined : [],
-    local: { cwd: args.cwd ?? process.cwd() },
+    tools: [],
+    local: { cwd: process.cwd() },
   });
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const run = await agent.send(
-      images.length > 0 ? { text: args.instruction, images } : args.instruction,
-    );
+    const run = await agent.send({ text: args.instruction, images });
     const waitPromise = run.wait();
     // The loser of the race still rejects later (e.g. cancel); keep its
     // rejection observed so it doesn't surface as an unhandled rejection.
@@ -64,48 +61,37 @@ async function runCursorAgent(args: RunArgs): Promise<string> {
 
 // --- MCP server --------------------------------------------------------------
 
-const server = new McpServer({ name: "cursor-agent", version: "0.1.0" });
+const server = new McpServer({ name: "image-recognition", version: "0.1.0" });
 
 server.registerTool(
-  "cursor_agent",
+  "recognize_image",
   {
     description:
-      "Run a Cursor agent. Accepts an instruction and optional images (data URIs or URLs) — " +
-      "gives text-only models like DeepSeek image understanding, and doubles as a general agent.",
+      "Recognize and analyze the given image(s) with a vision model and return a text description. " +
+      "Use this to give text-only LLMs like DeepSeek image understanding.",
     inputSchema: {
-      instruction: z
-        .string()
-        .describe("What to ask the agent. For images, e.g. 'Describe this image in detail'."),
       images: z
         .union([z.string(), z.array(z.string())])
-        .optional()
-        .describe("One or more image data URIs (data:image/png;base64,...) or http(s) URLs."),
-      model: z.string().optional().describe(`Model id (default: ${DEFAULT_MODEL}).`),
-      tools: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true the agent can use shell/file tools (general agent mode). Default false — the agent only answers in text (safe mode for pure image understanding).",
-        ),
-      cwd: z
+        .describe("Image data URI (data:image/png;base64,...) or http(s) URL to recognize."),
+      instruction: z
         .string()
         .optional()
-        .describe(
-          "Working directory for the agent (relevant only when tools are enabled). Default: the server's cwd.",
-        ),
+        .describe(`What to ask about the image. Default: ${DEFAULT_INSTRUCTION}`),
+      model: z.string().optional().describe(`Vision model id (default: ${DEFAULT_MODEL}).`),
     },
   },
   async (args) => {
     try {
       const text = await runCursorAgent({
-        ...args,
-        images: normalizeImages(args.images),
+        instruction: args.instruction ?? DEFAULT_INSTRUCTION,
+        images: normalizeImages(args.images) ?? [],
+        model: args.model,
       });
       return { content: [{ type: "text" as const, text }] };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
-        content: [{ type: "text" as const, text: `cursor_agent failed: ${message}` }],
+        content: [{ type: "text" as const, text: `recognize_image failed: ${message}` }],
         isError: true,
       };
     }
