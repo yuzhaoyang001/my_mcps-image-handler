@@ -1,0 +1,25 @@
+{
+  "name": "images-handler",
+  "version": "0.1.0",
+  "description": "MCP server that gives text-only LLMs (e.g. DeepSeek) image understanding by running a Cursor agent with vision models",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/selfcheck.ts"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.27",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  }
+}
