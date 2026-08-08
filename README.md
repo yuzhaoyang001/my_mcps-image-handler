@@ -64,7 +64,7 @@ stdio 传输,按标准协议配置启动命令即可(记得通过 `env` 传入 `
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `images` | string 或 string[] | 是 | 图片 data URI(`data:image/png;base64,...`)或 http(s) URL |
+| `images` | string 或 string[] | 是 | 图片 data URI(`data:image/png;base64,...`)、http(s) URL 或**本地图片文件路径**(如 `D:/photos/a.png`) |
 | `instruction` | string | 否 | 想针对图片问什么,缺省为"请详细描述这张图片的内容、画面元素和任何可见文字。" |
 | `model` | string | 否 | 覆盖视觉模型(默认 `composer-2`) |
 
@@ -85,7 +85,16 @@ stdio 传输,按标准协议配置启动命令即可(记得通过 `env` 传入 `
 }
 ```
 
+传本地文件路径(在服务所在机器上读取):
+
+```json
+{
+  "images": ["D:/photos/screenshot.png"]
+}
+```
+
 ## 说明与限制
 
 - 每次工具调用都会新建一个独立 Cursor agent(调用间不共享会话历史),用完即关闭。
 - 服务**只做图片识别**:agent 恒为纯文本模式(`tools: []`),不执行 shell/文件工具,除传入的图片外不会读取或访问任何本地内容。
+- 传本地路径时,文件在**服务所在机器**上读取,并按扩展名识别为图片;非图片扩展名会被拒绝。请仅传入你自己信任的图片路径。

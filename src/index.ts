@@ -2,7 +2,7 @@ import { Agent } from "@cursor/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { normalizeImages, toSdkImage } from "./images.js";
+import { normalizeImages, toSdkImageAsync } from "./images.js";
 
 // --- configuration -----------------------------------------------------------
 
@@ -19,7 +19,7 @@ interface RunArgs {
 }
 
 async function runCursorAgent(args: RunArgs): Promise<string> {
-  const images = args.images.map(toSdkImage);
+  const images = await Promise.all(args.images.map(toSdkImageAsync));
 
   // A fresh agent per call so tool invocations never share conversation history.
   // tools: [] → text-only; this server only recognizes images and never grants
@@ -72,7 +72,9 @@ server.registerTool(
     inputSchema: {
       images: z
         .union([z.string(), z.array(z.string())])
-        .describe("Image data URI (data:image/png;base64,...) or http(s) URL to recognize."),
+        .describe(
+          "Image data URI (data:image/png;base64,...), http(s) URL, or local image file path to recognize.",
+        ),
       instruction: z
         .string()
         .optional()
